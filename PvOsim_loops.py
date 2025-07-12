@@ -51,14 +51,17 @@ def PvOsim(model, q, constraints):
                 else:
                     model.Ki_A[parent][con_id] = model.Ki_A[i][con_id] @ model.Pi[i].T
 
+        Ki_constraints = list(model.Ki_A[i].keys())
         # Propagate and update Li_A
-        for con_i_id in model.Ki_A[i]:
-            model.Li_A[con_i_id, con_i_id] += model.Ki_A[i][con_i_id] @ model.Omega[i] @ model.Ki_A[i][con_i_id].T
-            for con_j_id in model.Ki_A[i]:
-                if con_j_id > con_i_id:
-                    model.Li_A[con_i_id, con_j_id] += model.Ki_A[i][con_i_id] @ model.Omega[i] @ model.Ki_A[i][con_j_id].T
-                elif con_j_id < con_i_id:
-                    model.Li_A[con_j_id, con_i_id] += model.Ki_A[i][con_j_id] @ model.Omega[i] @ model.Ki_A[i][con_i_id].T
+        for j in range(len(Ki_constraints)):
+            con_j_id = Ki_constraints[j]
+            model.Li_A[con_j_id, con_j_id] += model.Ki_A[i][con_j_id] @ model.Omega[i] @ model.Ki_A[i][con_j_id].T
+            for k in range(j+1, len(Ki_constraints)):
+                con_k_id = Ki_constraints[k]
+                if con_k_id > con_j_id:
+                    model.Li_A[con_j_id, con_k_id] += model.Ki_A[i][con_j_id] @ model.Omega[i] @ model.Ki_A[i][con_k_id].T
+                elif con_k_id < con_j_id:
+                    model.Li_A[con_k_id, con_j_id] += model.Ki_A[i][con_k_id] @ model.Omega[i] @ model.Ki_A[i][con_j_id].T
 
     # Assemble the final Delassus matrix
     return model.Li_A

@@ -4,8 +4,10 @@ import PvOsim
 from EFPA import EFPA
 from copy import deepcopy
 from PvOsimR import PvOsimR
+from PvOsim_loops import PvOsim as PvOsimLoops
 import casadi as cs
 import random
+from copy import deepcopy
 
 class RandomKinematicTree:
 
@@ -48,16 +50,19 @@ c1 = Constraint()
 c1.K = np.random.randn(6,6)
 c1.parent = 6
 c1.constraint_index = 7
+c1.links = [(c1.parent, c1.K)]
 
 c2 = Constraint()
 c2.K = np.random.randn(6,6)
 c2.parent = 3
 c2.constraint_index = 8
+c2.links = [(c2.parent, c2.K)]
 
 c3 = Constraint()
 c3.K = np.random.randn(6,6)
 c3.parent = 5
 c3.constraint_index = 9
+c3.links = [(c3.parent, c3.K)]
 
 constraints.append(c1)
 constraints.append(c2)
@@ -71,6 +76,9 @@ Delassus_PV = PvOsim.PvOsim(model, q_rand, constraints)
 Delassus_efpa = EFPA(model_efpa, q_rand, constraints)
 Delassus_pvosimr = PvOsimR(model, q_rand, constraints)
 
+model_loops = deepcopy(model)
+Delassus_pvosim_loops = PvOsimLoops(model_loops, q_rand, constraints)
+
 # compare the algorithms
 for i in range(len(constraints)):
     for j in range(i, len(constraints)):
@@ -79,6 +87,10 @@ for i in range(len(constraints)):
         j_pv = model.constraints_supported[0][j] - model.n_joints - 1
         PV_mat = Delassus_PV[i*6:i*6 + 6, j*6 : j*6 + 6]
         assert(np.linalg.norm(cs.DM(PV_mat).full() - cs.DM(Delassus_pvosimr[i_pv,j_pv]).full()) < 1e-14)
+
+        i_con_id = model.constraints_supported[0][i]
+        j_con_id = model.constraints_supported[0][j]
+        assert(np.linalg.norm(cs.DM(Delassus_pvosimr[i_pv, j_pv]).full() - cs.DM(Delassus_pvosim_loops[i_con_id, j_con_id]).full()) < 1e-14)
 
 
 
@@ -101,6 +113,7 @@ for i in range(number_of_constraints):
     c.K = np.random.randn(6,6)
     c.parent = random.randint(1, model.n_joints)
     c.constraint_index = constraint_counter
+    c.links = [(c.parent, c.K)]
     constraint_counter += 1
     constraints.append(c)
 
@@ -111,6 +124,10 @@ Delassus_PV = PvOsim.PvOsim(model, q_rand, constraints)
 print(Delassus_PV)
 Delassus_efpa = EFPA(model_efpa, q_rand, constraints)
 Delassus_pvosimr = PvOsimR(model, q_rand, constraints)
+
+model_copy = deepcopy(model)
+Delassus_pvosim_loops = PvOsimLoops(model_copy, q_rand, constraints)
+
 
 print(Delassus_efpa)
 
@@ -129,4 +146,11 @@ for i in range(len(constraints)):
             assert(np.linalg.norm(cs.DM(PV_mat).full() - cs.DM(Delassus_pvosimr[i_pv,j_pv].T).full()) < 1e-14)
         else:
             assert(np.linalg.norm(cs.DM(PV_mat).full() - cs.DM(Delassus_pvosimr[i_pv,j_pv]).full()) < 1e-14)
+
+        i_con_id = model.constraints_supported[0][i]
+        j_con_id = model.constraints_supported[0][j]
+        if i_con_id < j_con_id:
+            assert(np.linalg.norm(cs.DM(Delassus_pvosimr[i_pv, j_pv]).full() - cs.DM(Delassus_pvosim_loops[i_con_id, j_con_id]).full()) < 1e-14)
+        else:
+            assert(np.linalg.norm(cs.DM(Delassus_pvosimr[i_pv, j_pv]).full() - cs.DM(Delassus_pvosim_loops[j_con_id, i_con_id]).full()) < 1e-14)
         
