@@ -52,7 +52,8 @@ def compute_metadata(model, constraints):
             K_direct[link_idx][con.constraint_index] = K_mat
 
     for i in range(model.n_joints, 0, -1):
-
+        if mathcalD[i] == 0:
+            continue
         parent = model.parents[i]
         if mathcalD[parent] != 0:
             if mathcalD[parent] != parent:
@@ -61,7 +62,7 @@ def compute_metadata(model, constraints):
                 constraints_from_descendants[parent].append(constraints_on_link[mathcalD[parent]])
 
                 # Compute intersection and update constraint_ancestor
-                intersection = constraints_on_link[mathcalD[parent]] & constraints_on_link[parent]
+                intersection = constraints_on_link[mathcalD[parent]] & constraints_on_link[mathcalD[i]]
                 for constraint in intersection:
                     constraint_ancestor[constraint, mathcalD[parent]] = parent
                 
@@ -125,7 +126,7 @@ def PvOsimR(model, q, constraints):
     # initialize Delassus matrix with zeros
     for c1 in constraints:
         for c2 in constraints:
-            Delassus[c1.constraint_index, c2.constraint_index] = cs.SX.zeros(c1.K.shape[0], c2.K.shape[0])
+            Delassus[c1.constraint_index, c2.constraint_index] = cs.SX.zeros(c1.constraint_dim, c2.constraint_dim)
 
     for n in mathcalN:
         coupling_pairs = get_coupling_pairs(constraints_from_descendants[n])
@@ -151,6 +152,15 @@ def PvOsimR(model, q, constraints):
     for con in constraints:
         con_id = con.constraint_index
         for link_idx, K_mat in con.links:
-            Delassus[con_id, con_id] += K_direct[link_idx][con_id] @ Omega[(0, link_idx)] @ K_direct[link_idx][con_id].T
+            # Check constraint_ancestor for this constraint and link
+            if (con_id, link_idx) in constraint_ancestor:
+                # Use Omega with ancestor value as first index, keeping link_idx as second index
+                ancestor = constraint_ancestor[con_id, link_idx]
+                omega_matrix = Omega[(ancestor, link_idx)]
+            else:
+                # Use original Omega[(0, link_idx)]
+                omega_matrix = Omega[(0, link_idx)]
+            
+            Delassus[con_id, con_id] += K_direct[link_idx][con_id] @ omega_matrix @ K_direct[link_idx][con_id].T
     
     return Delassus
