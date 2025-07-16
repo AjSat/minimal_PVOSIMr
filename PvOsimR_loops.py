@@ -12,7 +12,6 @@ def get_ancestors(model, i):
     return ancestors
 
 def get_coupling_pairs(constraints_from_descendants):
-    partition = (set(), set())
     coupling_pairs = {}
     for i in range(len(constraints_from_descendants)):
         for j in range(i+1, len(constraints_from_descendants)):
@@ -34,6 +33,7 @@ def compute_metadata(model, constraints):
     constraints_from_descendants = defaultdict(list)
     mathcalD = {}
     mathcalN = set()
+    constraint_ancestor = {} # stores the ancestor branching point for each constraint
     mathcalA = {}
     for i in range(model.n_joints + 1):
         mathcalD[i] = 0
@@ -48,14 +48,10 @@ def compute_metadata(model, constraints):
             mathcalD[link_idx] = link_idx
             mathcalN.add(link_idx)
             constraints_from_descendants[link_idx].append(set([con.constraint_index]))
-            # constraints_on_link[link_idx].add(con.constraint_index)
+            constraints_on_link[link_idx].add(con.constraint_index)
             K_direct[link_idx][con.constraint_index] = K_mat
 
     for i in range(model.n_joints, 0, -1):
-        if mathcalD[i] == i:
-            constraints_on_link[i] = set()
-            for cons in constraints_from_descendants[i]:
-                constraints_on_link[i].update(cons)
 
         parent = model.parents[i]
         if mathcalD[parent] != 0:
@@ -63,17 +59,31 @@ def compute_metadata(model, constraints):
                 mathcalN.add(parent)
                 mathcalA[mathcalD[parent]] = parent
                 constraints_from_descendants[parent].append(constraints_on_link[mathcalD[parent]])
+
+                # Compute intersection and update constraint_ancestor
+                intersection = constraints_on_link[mathcalD[parent]] & constraints_on_link[parent]
+                for constraint in intersection:
+                    constraint_ancestor[constraint, mathcalD[parent]] = parent
+                
+                constraints_on_link[parent].update(constraints_on_link[mathcalD[parent]])
                 mathcalD[parent] = parent
             mathcalA[mathcalD[i]] = parent
             constraints_from_descendants[parent].append(constraints_on_link[mathcalD[i]])
+            
+            # Compute intersection and update constraint_ancestor
+            intersection = constraints_on_link[mathcalD[i]] & constraints_on_link[parent]
+            for constraint in intersection:
+                constraint_ancestor[constraint, mathcalD[i]] = parent
+            
+            constraints_on_link[parent].update(constraints_on_link[mathcalD[i]])
         else:
             mathcalD[parent] += mathcalD[i]
 
-    return K_direct, sorted(list(mathcalN)), mathcalA, mathcalD, constraints_from_descendants
+    return K_direct, sorted(list(mathcalN)), mathcalA, mathcalD, constraints_from_descendants, constraint_ancestor
 
 def PvOsimR(model, q, constraints):
 
-    K_direct, mathcalN, mathcalA, mathcalD, constraints_from_descendants = compute_metadata(model, constraints)
+    K_direct, mathcalN, mathcalA, mathcalD, constraints_from_descendants, constraint_ancestor = compute_metadata(model, constraints)
 
     Hi_A = list(model.Hi)
     P = {}
@@ -121,7 +131,22 @@ def PvOsimR(model, q, constraints):
         coupling_pairs = get_coupling_pairs(constraints_from_descendants[n])
         for c1 in coupling_pairs:
             for c2 in coupling_pairs[c1]:
-                Delassus[c1, c2] += K_direct[n][c1] @ Omega[(0, n)] @ K_direct[n][c2].T
+                # Check constraint_ancestor for both constraints and this link
+                omega_values = []
+                if (c1, n) in constraint_ancestor:
+                    omega_values.append(constraint_ancestor[c1, n])
+                if (c2, n) in constraint_ancestor:
+                    omega_values.append(constraint_ancestor[c2, n])
+                
+                if omega_values:
+                    # Use Omega with max ancestor value as first index, keeping n as second index
+                    max_ancestor = max(omega_values)
+                    omega_matrix = Omega[(max_ancestor, n)]
+                else:
+                    # Use original Omega[(0, n)]
+                    omega_matrix = Omega[(0, n)]
+                
+                Delassus[c1, c2] += K_direct[n][c1] @ omega_matrix @ K_direct[n][c2].T
             
     for con in constraints:
         con_id = con.constraint_index
