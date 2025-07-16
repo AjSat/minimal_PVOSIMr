@@ -5,6 +5,7 @@ from EFPA import EFPA
 from copy import deepcopy
 from PvOsimR import PvOsimR
 from PvOsim_loops import PvOsim as PvOsimLoops
+from PvOsimR_loops import PvOsimR as PvOsimRLoops
 import casadi as cs
 import random
 from copy import deepcopy
@@ -78,6 +79,7 @@ Delassus_pvosimr = PvOsimR(model, q_rand, constraints)
 
 model_loops = deepcopy(model)
 Delassus_pvosim_loops = PvOsimLoops(model_loops, q_rand, constraints)
+Delassus_pvosimr_loops = PvOsimRLoops(model_loops, q_rand, constraints)
 
 # compare the algorithms
 for i in range(len(constraints)):
@@ -91,6 +93,9 @@ for i in range(len(constraints)):
         i_con_id = model.constraints_supported[0][i]
         j_con_id = model.constraints_supported[0][j]
         assert(np.linalg.norm(cs.DM(Delassus_pvosimr[i_pv, j_pv]).full() - cs.DM(Delassus_pvosim_loops[i_con_id, j_con_id]).full()) < 1e-14)
+
+        if i_con_id <= j_con_id:
+            assert(np.linalg.norm(cs.DM(Delassus_pvosimr[i_pv, j_pv]).full() - cs.DM(Delassus_pvosim_loops[i_con_id, j_con_id]).full()) < 1e-14)
 
 
 
@@ -127,6 +132,8 @@ Delassus_pvosimr = PvOsimR(model, q_rand, constraints)
 
 model_copy = deepcopy(model)
 Delassus_pvosim_loops = PvOsimLoops(model_copy, q_rand, constraints)
+model_copy = deepcopy(model)
+Delassus_pvosimr_loops = PvOsimRLoops(model_copy, q_rand, constraints)
 
 
 print(Delassus_efpa)
@@ -149,8 +156,7 @@ for i in range(len(constraints)):
 
         i_con_id = model.constraints_supported[0][i]
         j_con_id = model.constraints_supported[0][j]
-        if i_con_id < j_con_id:
+        if i_con_id <= j_con_id:
             assert(np.linalg.norm(cs.DM(Delassus_pvosimr[i_pv, j_pv]).full() - cs.DM(Delassus_pvosim_loops[i_con_id, j_con_id]).full()) < 1e-14)
-        else:
-            assert(np.linalg.norm(cs.DM(Delassus_pvosimr[i_pv, j_pv]).full() - cs.DM(Delassus_pvosim_loops[j_con_id, i_con_id]).full()) < 1e-14)
+            assert(np.linalg.norm(cs.DM(Delassus_pvosim_loops[i_con_id, j_con_id]).full() - cs.DM(Delassus_pvosimr_loops[i_con_id, j_con_id]).full()) < 1e-14)
         
