@@ -207,3 +207,79 @@ assert diff_norm < 1e-14, f"Mismatch for binary constraint {con_id}: {diff_norm}
 
 print("Single binary constraint test passed!")
 
+# Test multiple binary constraints (each acting on 2 links)
+print("Testing two binary constraints...")
+
+n = 12
+model = RandomKinematicTree(n)
+
+# Create a tree with multiple branches
+model.parents[4] = 2   # link 4 branches from link 2
+model.parents[7] = 3   # link 7 branches from link 3  
+model.parents[9] = 5   # link 9 branches from link 5
+
+q_rand = np.random.randn(n, 1)
+
+# Create multiple binary constraints
+constraints = []
+constraint_counter = n
+
+# First binary constraint
+c1 = Constraint()
+c1.constraint_index = constraint_counter
+c1.constraint_dim = 6
+c1.links = [
+    (2, np.random.randn(6, 6)),  # First link
+    (6, np.random.randn(6, 6))   # Second link
+]
+constraints.append(c1)
+constraint_counter += 1
+
+# Second binary constraint
+c2 = Constraint()
+c2.constraint_index = constraint_counter
+c2.constraint_dim = 4
+c2.links = [
+    (4, np.random.randn(4, 6)),  # First link
+    (8, np.random.randn(4, 6))   # Second link
+]
+constraints.append(c2)
+constraint_counter += 1
+
+# Third binary constraint
+c3 = Constraint()
+c3.constraint_index = constraint_counter
+c3.constraint_dim = 6
+c3.links = [
+    (4, np.random.randn(6, 6)),  # First link
+    (8, np.random.randn(6, 6))   # Second link
+]
+constraints.append(c3)
+constraint_counter += 1
+
+# Test both loop-based algorithms
+model_copy1 = deepcopy(model)
+model_copy2 = deepcopy(model)
+
+Delassus_pvosim_loops = PvOsimLoops(model_copy1, q_rand, constraints)
+Delassus_pvosimr_loops = PvOsimRLoops(model_copy2, q_rand, constraints)
+
+print(f"Testing {len(constraints)} binary constraints")
+for i, c in enumerate(constraints):
+    print(f"  Constraint {i+1}: links {c.links[0][0]} and {c.links[1][0]}, dimension {c.constraint_dim}")
+
+# Compare all pairwise combinations of constraints
+for i in range(len(constraints)):
+    for j in range(i, len(constraints)):
+        i_con_id = constraints[i].constraint_index
+        j_con_id = constraints[j].constraint_index
+        if i_con_id <= j_con_id:
+            diff_norm = np.linalg.norm(
+                cs.DM(Delassus_pvosim_loops[i_con_id, j_con_id]).full() - 
+                cs.DM(Delassus_pvosimr_loops[i_con_id, j_con_id]).full()
+            )
+            assert diff_norm < 1e-14, f"Mismatch for constraints {i_con_id}, {j_con_id}: {diff_norm}"
+
+print("Multiple binary constraints test passed!")
+
+

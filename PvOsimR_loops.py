@@ -20,11 +20,11 @@ def get_coupling_pairs(constraints_from_descendants):
                     if con1 <= con2:
                         if con1 not in coupling_pairs:
                             coupling_pairs[con1] = []
-                        coupling_pairs[con1].append(con2)
+                        if con2 not in coupling_pairs[con1]: coupling_pairs[con1].append(con2)
                     else:
                         if con2 not in coupling_pairs:
                             coupling_pairs[con2] = []
-                        coupling_pairs[con2].append(con1)
+                        if con1 not in coupling_pairs[con2]: coupling_pairs[con2].append(con1)
     return coupling_pairs
 
 
@@ -61,31 +61,47 @@ def compute_metadata(model, constraints):
                 mathcalA[mathcalD[parent]] = parent
                 constraints_from_descendants[parent].append(constraints_on_link[mathcalD[parent]])
 
-                # Compute intersection and update constraint_ancestor
-                intersection = constraints_on_link[mathcalD[parent]] & constraints_on_link[mathcalD[i]]
-                for constraint in intersection:
-                    constraint_ancestor[constraint, mathcalD[parent]] = parent
+                # # Compute intersection and update constraint_ancestor
+                # intersection = constraints_on_link[mathcalD[parent]] & constraints_on_link[mathcalD[i]]
+                # for constraint in intersection:
+                #     constraint_ancestor[constraint, mathcalD[parent]] = parent
                 
                 constraints_on_link[parent].update(constraints_on_link[mathcalD[parent]])
                 mathcalD[parent] = parent
             mathcalA[mathcalD[i]] = parent
             constraints_from_descendants[parent].append(constraints_on_link[mathcalD[i]])
             
-            # Compute intersection and update constraint_ancestor
-            intersection = constraints_on_link[mathcalD[i]] & constraints_on_link[parent]
-            for constraint in intersection:
-                constraint_ancestor[constraint, mathcalD[i]] = parent
+            # # Compute intersection and update constraint_ancestor
+            # intersection = constraints_on_link[mathcalD[i]] & constraints_on_link[parent]
+            # for constraint in intersection:
+            #     constraint_ancestor[constraint, mathcalD[i]] = parent
             
             constraints_on_link[parent].update(constraints_on_link[mathcalD[i]])
         else:
             mathcalD[parent] += mathcalD[i]
 
+    coupling_pairs = {}
+    for n in mathcalN:
+        coupling_pairs[n] = get_coupling_pairs(constraints_from_descendants[n])
+    for con in constraints:
+        con_id = con.constraint_index
+        for link_idx, _ in con.links:
+            index_now = link_idx
+            while index_now in mathcalA and mathcalA[index_now] != 0:
+                index_now = mathcalA[index_now]
+                if con_id in coupling_pairs[index_now]:
+                    if con_id in coupling_pairs[index_now][con_id]:
+                        constraint_ancestor[con_id, link_idx] = index_now
+                        link_idx = index_now
+                # index_now = mathcalA[index_now]
+                        
     return K_direct, sorted(list(mathcalN)), mathcalA, mathcalD, constraints_from_descendants, constraint_ancestor
 
 def PvOsimR(model, q, constraints):
 
     K_direct, mathcalN, mathcalA, mathcalD, constraints_from_descendants, constraint_ancestor = compute_metadata(model, constraints)
 
+    
     Hi_A = list(model.Hi)
     P = {}
     Omega = {}
@@ -153,9 +169,16 @@ def PvOsimR(model, q, constraints):
         con_id = con.constraint_index
         for link_idx, K_mat in con.links:
             # Check constraint_ancestor for this constraint and link
+            coupling_pairs = get_coupling_pairs(constraints_from_descendants[link_idx])
+            if con_id in coupling_pairs:
+                if con_id in coupling_pairs[con_id]:
+                    continue
+            
             if (con_id, link_idx) in constraint_ancestor:
                 # Use Omega with ancestor value as first index, keeping link_idx as second index
                 ancestor = constraint_ancestor[con_id, link_idx]
+                if (ancestor, link_idx) not in Omega:
+                    compute_Omega(ancestor, link_idx, Omega, mathcalA, P)
                 omega_matrix = Omega[(ancestor, link_idx)]
             else:
                 # Use original Omega[(0, link_idx)]
@@ -164,3 +187,35 @@ def PvOsimR(model, q, constraints):
             Delassus[con_id, con_id] += K_direct[link_idx][con_id] @ omega_matrix @ K_direct[link_idx][con_id].T
     
     return Delassus
+
+def compute_Omega(ancestor, link_idx, Omega, mathcalA, P):
+    """
+    Compute Omega[(ancestor, link_idx)] when it doesn't exist.
+    This function recursively computes the required Omega entry using the relationship:
+    Omega[(ancestor, link_idx)] = Omega[(intermediate, link_idx)] + P[(intermediate, link_idx)].T @ Omega[(ancestor, intermediate)] @ P[(intermediate, link_idx)]
+    """
+    if (ancestor, link_idx) in Omega:
+        return  # Already computed
+    
+    # Find the path from ancestor to link_idx through mathcalA
+    if link_idx in mathcalA and mathcalA[link_idx] != 0:
+        intermediate = mathcalA[link_idx]
+        
+        # Recursively ensure Omega[(ancestor, intermediate)] exists
+        if (ancestor, intermediate) not in Omega:
+            compute_Omega(ancestor, intermediate, Omega, mathcalA, P)
+        
+        # Compute Omega[(ancestor, link_idx)]
+        if (intermediate, link_idx) in Omega and (ancestor, intermediate) in Omega:
+            Omega[(ancestor, link_idx)] = (Omega[(intermediate, link_idx)] + 
+                                          P[(intermediate, link_idx)].T @ 
+                                          Omega[(ancestor, intermediate)] @ 
+                                          P[(intermediate, link_idx)])
+        else:
+            # If we can't compute it, use a zero matrix as fallback
+            import casadi as cs
+            Omega[(ancestor, link_idx)] = cs.SX.zeros(6, 6)
+    else:
+        # If no path exists, use zero matrix
+        import casadi as cs
+        Omega[(ancestor, link_idx)] = cs.SX.zeros(6, 6)
