@@ -137,11 +137,6 @@ def PvOsimR(model, q, constraints):
             con_links.append(link_idx)
         con_links.sort()
         for con_link in reversed(con_links):
-            # if (con_id, con_link) in constraint_ancestor:
-
-                # # ancestor = constraint_ancestor[con_id, con_link]
-                # K_direct[ancestor][con_id] += K_direct[con_link][con_id] @ P[(ancestor, con_link)].T
-            # Anc =  = model.parents[link_idx]
             original_con_link = con_link
             while con_link in mathcalA:
                 Anc = mathcalA[con_link]
@@ -151,13 +146,7 @@ def PvOsimR(model, q, constraints):
                 con_link = Anc
                 if (con_id, original_con_link) in constraint_ancestor and constraint_ancestor[con_id, original_con_link] == con_link:
                     break
-            
-            # while parent != 0:
-            #     if con_id not in K_direct[parent]:
-            #         K_direct[parent][con_id] = cs.SX(K_mat.shape[0], 6)
-            #     K_direct[parent][con_id] += K_direct[link_idx][con_id] @ P[(parent, link_idx)].T
-            #     link_idx = parent
-            #     parent = model.parents[parent]
+    
 
     Delassus = {}
     # initialize Delassus matrix with zeros
@@ -177,10 +166,8 @@ def PvOsimR(model, q, constraints):
                     omega_values.append(constraint_ancestor[c2, n])
                 
                 if omega_values:
-                    # Use Omega with max ancestor value as first index, keeping n as second index
                     max_ancestor = max(omega_values)
-                    if (max_ancestor, n) not in Omega:
-                        compute_Omega(max_ancestor, n, Omega, mathcalA, P)
+                    compute_Omega(max_ancestor, n, Omega, mathcalA, P)
                     omega_matrix = Omega[(max_ancestor, n)]
                 else:
                     omega_matrix = Omega[(0, n)]
@@ -197,13 +184,11 @@ def PvOsimR(model, q, constraints):
                     continue
             
             if (con_id, link_idx) in constraint_ancestor:
-                # Use Omega with ancestor value as first index, keeping link_idx as second index
                 ancestor = constraint_ancestor[con_id, link_idx]
                 if (ancestor, link_idx) not in Omega:
                     compute_Omega(ancestor, link_idx, Omega, mathcalA, P)
                 omega_matrix = Omega[(ancestor, link_idx)]
             else:
-                # Use original Omega[(0, link_idx)]
                 omega_matrix = Omega[(0, link_idx)]
             
             Delassus[con_id, con_id] += K_direct[link_idx][con_id] @ omega_matrix @ K_direct[link_idx][con_id].T
