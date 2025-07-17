@@ -282,4 +282,83 @@ for i in range(len(constraints)):
 
 print("Multiple binary constraints test passed!")
 
+# Test random n-ary constraints with random tree structure
+print("Testing random n-ary constraints...")
 
+n = 20
+model = RandomKinematicTree(n)
+
+# # Create random tree structure with 3 branches
+# number_branches = 3
+# branch_points = []
+# for i in range(number_branches):
+#     # Choose a random child link (not link 1, which is root)
+#     random_child_link = random.randint(2, model.n_joints)
+#     # Choose a random parent link that comes before the child
+#     random_parent_link = random.randint(1, random_child_link - 1)
+#     model.parents[random_child_link] = random_parent_link
+#     branch_points.append((random_child_link, random_parent_link))
+
+# print(f"Created tree with branches: {branch_points}")
+
+q_rand = np.random.randn(n, 1)
+
+# Create 5 random n-ary constraints (arity between 2 and 4)
+number_of_constraints = 5
+constraint_counter = n
+constraints = []
+
+for i in range(number_of_constraints):
+    c = Constraint()
+    c.constraint_index = constraint_counter
+    
+    # Randomly choose the arity (number of links) between 2 and 4
+    n_ary = random.randint(2,5)
+    
+    # Randomly select links for this constraint
+    available_links = list(range(1, model.n_joints + 1))
+    selected_links = random.sample(available_links, n_ary)
+    
+    # Random constraint dimension between 3 and 6
+    constraint_dim = random.randint(3, 6)
+    c.constraint_dim = constraint_dim
+    
+    # Create K matrices for each link in this constraint
+    c.links = []
+    for link_idx in selected_links:
+        K_mat = np.random.randn(constraint_dim, 6)
+        c.links.append((link_idx, K_mat))
+    
+    # Set parent to first link for compatibility
+    c.parent = c.links[0][0]
+    
+    constraint_counter += 1
+    constraints.append(c)
+    
+    print(f"  Constraint {i+1}: {n_ary}-ary constraint on links {[link[0] for link in c.links]}, dimension {constraint_dim}")
+
+# Test both loop-based algorithms
+model_copy1 = deepcopy(model)
+model_copy2 = deepcopy(model)
+
+Delassus_pvosim_loops = PvOsimLoops(model_copy1, q_rand, constraints)
+Delassus_pvosimr_loops = PvOsimRLoops(model_copy2, q_rand, constraints)
+
+print(f"Testing {len(constraints)} random n-ary constraints on {n}-link tree")
+
+# Compare all pairwise combinations of constraints
+max_diff = 0.0
+for i in range(len(constraints)):
+    for j in range(i, len(constraints)):
+        i_con_id = constraints[i].constraint_index
+        j_con_id = constraints[j].constraint_index
+        
+        if i_con_id <= j_con_id:
+            diff_norm = np.linalg.norm(
+                cs.DM(Delassus_pvosim_loops[i_con_id, j_con_id]).full() - 
+                cs.DM(Delassus_pvosimr_loops[i_con_id, j_con_id]).full()
+            )
+            max_diff = max(max_diff, diff_norm)
+            assert diff_norm < 1e-14, f"Mismatch for constraints {i_con_id}, {j_con_id}: {diff_norm}"
+
+print(f"Random n-ary constraints test passed! (max difference: {max_diff:.2e})")

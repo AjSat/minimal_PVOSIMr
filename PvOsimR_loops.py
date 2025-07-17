@@ -92,6 +92,9 @@ def compute_metadata(model, constraints):
                 if con_id in coupling_pairs[index_now]:
                     if con_id in coupling_pairs[index_now][con_id]:
                         constraint_ancestor[con_id, link_idx] = index_now
+                        while mathcalA[link_idx] != index_now:
+                            constraint_ancestor[con_id, mathcalA[link_idx]] = index_now
+                            link_idx = mathcalA[link_idx]
                         link_idx = index_now
                 # index_now = mathcalA[index_now]
                         
@@ -129,14 +132,32 @@ def PvOsimR(model, q, constraints):
 
     for con in constraints:
         con_id = con.constraint_index
+        con_links = []
         for link_idx, K_mat in con.links:
-            parent = model.parents[link_idx]
-            while parent != 0:
-                if con_id not in K_direct[parent]:
-                    K_direct[parent][con_id] = cs.SX(K_mat.shape[0], 6)
-                K_direct[parent][con_id] += K_direct[link_idx][con_id] @ P[(parent, link_idx)].T
-                link_idx = parent
-                parent = model.parents[parent]
+            con_links.append(link_idx)
+        con_links.sort()
+        for con_link in reversed(con_links):
+            # if (con_id, con_link) in constraint_ancestor:
+
+                # # ancestor = constraint_ancestor[con_id, con_link]
+                # K_direct[ancestor][con_id] += K_direct[con_link][con_id] @ P[(ancestor, con_link)].T
+            # Anc =  = model.parents[link_idx]
+            original_con_link = con_link
+            while con_link in mathcalA:
+                Anc = mathcalA[con_link]
+                if con_id not in K_direct[Anc]:
+                    K_direct[Anc][con_id] = cs.SX(K_mat.shape[0], 6)
+                K_direct[Anc][con_id] += K_direct[con_link][con_id] @ P[(Anc, con_link)].T
+                con_link = Anc
+                if (con_id, original_con_link) in constraint_ancestor and constraint_ancestor[con_id, original_con_link] == con_link:
+                    break
+            
+            # while parent != 0:
+            #     if con_id not in K_direct[parent]:
+            #         K_direct[parent][con_id] = cs.SX(K_mat.shape[0], 6)
+            #     K_direct[parent][con_id] += K_direct[link_idx][con_id] @ P[(parent, link_idx)].T
+            #     link_idx = parent
+            #     parent = model.parents[parent]
 
     Delassus = {}
     # initialize Delassus matrix with zeros
@@ -158,9 +179,10 @@ def PvOsimR(model, q, constraints):
                 if omega_values:
                     # Use Omega with max ancestor value as first index, keeping n as second index
                     max_ancestor = max(omega_values)
+                    if (max_ancestor, n) not in Omega:
+                        compute_Omega(max_ancestor, n, Omega, mathcalA, P)
                     omega_matrix = Omega[(max_ancestor, n)]
                 else:
-                    # Use original Omega[(0, n)]
                     omega_matrix = Omega[(0, n)]
                 
                 Delassus[c1, c2] += K_direct[n][c1] @ omega_matrix @ K_direct[n][c2].T
